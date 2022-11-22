@@ -57,21 +57,31 @@ def real_main(args):
             if not path.exists():
                 raise ValueError(f"input '{in_file}' doesn't exist")
             pe = lief.PE.parse(in_file)
+            pe_buf = open(in_file, "rb").read()
             macho = lief.MachO.parse(tmp.name)[0]
+            old_text_seg = next(lc for lc in macho.commands if type(lc) is lief.MachO.SegmentCommand and lc.name == "__TEXT")
             old_id_lc = next(
                 lc
                 for lc in macho.commands
                 if type(lc) is lief.MachO.DylibCommand
                 and lc.command == lief.MachO.LOAD_COMMAND_TYPES.ID_DYLIB
             )
-            macho.remove(old_id_lc)
+            new_text_sect = lief.MachO.Section("__text", list(pe_buf))
+            new_text_seg = lief.MachO.SegmentCommand("__TEXT")
+            new_text_seg.max_protection = 7
+            new_text_seg.init_protection = 7
+            new_text_seg.add_section(new_text_sect)
+            macho.add(new_text_seg)
             new_id_lc = lief.MachO.DylibCommand.id_dylib(path.name + ".dylib")
             macho.add(new_id_lc)
+
+            macho.remove(old_id_lc)
+            macho.remove(old_text_seg)
             macho.uuid.uuid = list(random.randbytes(16))
             fs = macho.function_starts
             for f in pe.functions:
                 fs.add_function(f.address)
-            print(macho)
+            # print(macho)
             macho.write(str(path) + ".dylib")
 
 
